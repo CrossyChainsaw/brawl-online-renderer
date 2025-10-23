@@ -1,4 +1,3 @@
-import React from "react";
 import "./App.css";
 import ImageFinder from "./components/ImageFinder";
 
