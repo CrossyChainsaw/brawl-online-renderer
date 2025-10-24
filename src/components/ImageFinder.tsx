@@ -1,15 +1,16 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 
-// Dynamically import all images recursively from src/assets
-const allImages: Record<string, string> = import.meta.glob(
-  "../assets/**/*.{png,jpg,jpeg}",
-  { eager: true, as: "url" }
-);
+// Lazily import all assets (DO NOT use eager:true)
+const allImages = import.meta.glob("../assets/**/*.{png,jpg,jpeg}", {
+  as: "url",
+});
 
 const ImageFinder: React.FC = () => {
   const [selectedLegend, setSelectedLegend] = useState("");
   const [selectedSkin, setSelectedSkin] = useState("");
   const [selectedColor, setSelectedColor] = useState("");
+
+  const [loadedImages, setLoadedImages] = useState<Record<string, string>>({});
 
   // Extract legends dynamically from folder names
   const legends = useMemo(() => {
@@ -39,38 +40,47 @@ const ImageFinder: React.FC = () => {
   }, [selectedLegend]);
 
   // Extract colors dynamically based on selected legend + skin
-// Extract colors dynamically based on selected legend + skin
-const colors = useMemo(() => {
-  if (!selectedLegend || !selectedSkin) return [];
+  const colors = useMemo(() => {
+    if (!selectedLegend || !selectedSkin) return [];
 
-  const imagesForSkin = Object.keys(allImages).filter(
-    (path) => path.includes(`/${selectedLegend}/${selectedSkin}/`)
-  );
+    const imagesForSkin = Object.keys(allImages).filter((path) =>
+      path.includes(`/${selectedLegend}/${selectedSkin}/`)
+    );
 
-  return Array.from(
-    new Set(
-      imagesForSkin.map((path) => {
-        const filename = path.split("/").pop() || "";
-        const parts = filename.split("_"); // ["ADA", "VixenAda", "Green", "01.png"]
-        return parts[2] || "Unknown"; // 3rd part = color
-      })
-    )
-  );
-}, [selectedLegend, selectedSkin]);
+    return Array.from(
+      new Set(
+        imagesForSkin.map((path) => {
+          const filename = path.split("/").pop() || "";
+          const parts = filename.split("_"); // ["ADA", "VixenAda", "Green", "01.png"]
+          return parts[2] || "Unknown"; // 3rd part = color
+        })
+      )
+    );
+  }, [selectedLegend, selectedSkin]);
 
-
-  // Filter images based on selections
-  const filteredImages = useMemo(() => {
-    return Object.entries(allImages)
-      .filter(([path]) => {
+  // Load images only when needed
+  useEffect(() => {
+    const load = async () => {
+      const entries = Object.entries(allImages).filter(([path]) => {
         return (
           (!selectedLegend || path.includes(`/${selectedLegend}/`)) &&
           (!selectedSkin || path.includes(`/${selectedSkin}/`)) &&
           (!selectedColor ||
             path.toLowerCase().includes(selectedColor.toLowerCase()))
         );
-      })
-      .map(([path, url]) => ({ path, url }));
+      });
+
+      const result: Record<string, string> = {};
+
+      // Load images only if needed
+      for (const [path, importer] of entries) {
+        result[path] = await importer(); // loads NOW, not on startup
+      }
+
+      setLoadedImages(result);
+    };
+
+    load();
   }, [selectedLegend, selectedSkin, selectedColor]);
 
   return (
@@ -144,8 +154,8 @@ const colors = useMemo(() => {
           flexWrap: "wrap",
         }}
       >
-        {filteredImages.length > 0 ? (
-          filteredImages.map(({ path, url }, i) => {
+        {Object.keys(loadedImages).length > 0 ? (
+          Object.entries(loadedImages).map(([path, url], i) => {
             const filename = path.split("/").pop() || `image_${i}.png`;
             return (
               <a key={i} href={url} download={filename}>
@@ -163,7 +173,7 @@ const colors = useMemo(() => {
             );
           })
         ) : (
-          <p>No image found</p>
+          <p>No image loaded yet</p>
         )}
       </div>
     </div>
